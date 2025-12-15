@@ -17,6 +17,7 @@ python-dateutil>=2.8.0
 # Charts and Visualization (if used)
 altair>=5.0.0
 plotly>=5.0.0
+PyMuPDF>=1.22.0
 
 # Additional Standard Libraries (built-in, no installation needed)
 # sqlite3 - built-in
