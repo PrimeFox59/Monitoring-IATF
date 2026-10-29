@@ -1,0 +1,7 @@
+__pycache__/
+uploads/
+projects.db*
+*.sqlite
+*.db
+*.log
+.env

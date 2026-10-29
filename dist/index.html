@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script id="iatf-demo-autologin">
+      (function() {
+        try {
+          const userStr = localStorage.getItem('user');
+          const loginTime = localStorage.getItem('loginTime');
+          const now = Date.now();
+          const oneWeek = 10080 * 60 * 1000;
+          if (!userStr || !loginTime || (now - parseInt(loginTime) >= oneWeek)) {
+            const demoUser = {
+              id: 'admin',
+              full_name: 'GALIH PRIMANANDA',
+              department: 'Prod MC',
+              section: 'Machining',
+              role: 'Admin',
+              is_approved: true
+            };
+            localStorage.setItem('user', JSON.stringify(demoUser));
+            localStorage.setItem('loginTime', now.toString());
+            console.log('[Demo] Auto-login active as Admin (GALIH PRIMANANDA)');
+          }
+        } catch (e) {
+          console.warn('[Demo] Auto-login init error:', e);
+        }
+
+        // Auto-fill and assist if login modal appears
+        const observer = new MutationObserver(function() {
+          const userInput = document.querySelector('input[name="userId"]');
+          const passInput = document.querySelector('input[name="password"]');
+          if (userInput && !userInput.value) {
+            userInput.value = 'admin';
+            userInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          if (passInput && !passInput.value) {
+            passInput.value = 'password';
+            passInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', function() {
+            observer.observe(document.body, { childList: true, subtree: true });
+          });
+        } else {
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
+      })();
+    </script>
+
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monitoring System - Project Management</title>
+    <style>
+      /* --- IATF TOAST NOTIFICATIONS --- */
+      #iatf-toast-container {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        z-index: 9999999;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        pointer-events: none;
+        max-width: 440px;
+        width: calc(100vw - 48px);
+      }
+      .iatf-toast {
+        pointer-events: auto;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 18px;
+        border-radius: 12px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13.5px;
+        line-height: 1.45;
+        animation: iatfSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        transition: all 0.25s ease;
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        position: relative;
+        overflow: hidden;
+      }
+      .iatf-toast.closing {
+        opacity: 0;
+        transform: translateX(40px) scale(0.95);
+      }
+      @keyframes iatfSlideIn {
+        from { opacity: 0; transform: translateY(-20px) scale(0.92); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .iatf-toast-success {
+        background: linear-gradient(135deg, #065F46 0%, #047857 100%);
+        color: #ECFDF5;
+        border-color: #10B981;
+      }
+      .iatf-toast-error {
+        background: linear-gradient(135deg, #991B1B 0%, #B91C1C 100%);
+        color: #FEF2F2;
+        border-color: #EF4444;
+      }
+      .iatf-toast-info {
+        background: linear-gradient(135deg, #18345E 0%, #1E40AF 100%);
+        color: #F8FAFC;
+        border-color: #3B82F6;
+      }
+      .iatf-toast-icon {
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .iatf-toast-content {
+        flex: 1;
+        word-break: break-word;
+      }
+      .iatf-toast-title {
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.9;
+        margin-bottom: 2px;
+      }
+      .iatf-toast-msg {
+        font-weight: 500;
+      }
+      .iatf-toast-close {
+        background: transparent;
+        border: none;
+        color: inherit;
+        opacity: 0.6;
+        cursor: pointer;
+        padding: 0 0 0 8px;
+        font-size: 18px;
+        line-height: 1;
+        transition: opacity 0.15s;
+      }
+      .iatf-toast-close:hover { opacity: 1; }
+      .iatf-toast-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.4);
+        width: 100%;
+        animation: iatfProgress 3.5s linear forwards;
+      }
+      @keyframes iatfProgress {
+        from { width: 100%; }
+        to { width: 0%; }
+      }
+
+      /* --- IATF CONFIRMATION MODAL --- */
+      #iatf-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 99999999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        animation: iatfFadeIn 0.2s ease forwards;
+      }
+      #iatf-confirm-overlay.closing {
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .iatf-confirm-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.65);
+        backdrop-filter: blur(4px);
+      }
+      .iatf-confirm-box {
+        position: relative;
+        background: #ffffff;
+        border-radius: 16px;
+        max-width: 440px;
+        width: 100%;
+        padding: 24px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+        border: 1px solid #E2E8F0;
+        display: flex;
+        gap: 16px;
+        animation: iatfZoomIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes iatfFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes iatfZoomIn {
+        from { opacity: 0; transform: scale(0.92) translateY(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      .iatf-confirm-icon {
+        flex-shrink: 0;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .iatf-confirm-icon.danger {
+        background: #FEE2E2;
+        color: #DC2626;
+        border: 1px solid #FCA5A5;
+      }
+      .iatf-confirm-icon.info {
+        background: #DBEAFE;
+        color: #2563EB;
+        border: 1px solid #93C5FD;
+      }
+      .iatf-confirm-body {
+        flex: 1;
+      }
+      .iatf-confirm-title {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 17px;
+        font-weight: 700;
+        color: #0F172A;
+        margin: 0 0 6px 0;
+      }
+      .iatf-confirm-message {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13.5px;
+        line-height: 1.5;
+        color: #475569;
+        margin: 0 0 20px 0;
+        word-break: break-word;
+      }
+      .iatf-confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      .iatf-btn-cancel, .iatf-btn-confirm {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13.5px;
+        font-weight: 600;
+        padding: 8px 18px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .iatf-btn-cancel {
+        background: #F1F5F9;
+        color: #475569;
+        border: 1px solid #CBD5E1;
+      }
+      .iatf-btn-cancel:hover { background: #E2E8F0; color: #1E293B; }
+      .iatf-btn-confirm.btn-danger {
+        background: #DC2626;
+        color: #ffffff;
+        border: 1px solid #B91C1C;
+        box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.25);
+      }
+      .iatf-btn-confirm.btn-danger:hover { background: #B91C1C; }
+      .iatf-btn-confirm.btn-primary {
+        background: #2563EB;
+        color: #ffffff;
+        border: 1px solid #1D4ED8;
+      }
+      .iatf-btn-confirm.btn-primary:hover { background: #1D4ED8; }
+    
+
+/* === PROJECT MONITOR IATF 16949 - REFINED EXECUTIVE UI/UX === */
+
+/* 1. Executive Toolbar */
+.iatf-toolbar-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 16px;
+  margin-top: 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* 2. Segmented View Switcher */
+.iatf-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+.iatf-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.iatf-seg-btn:hover {
+  color: #1e293b;
+}
+.iatf-seg-btn.active {
+  background: #ffffff;
+  color: #1d4ed8;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* 3. Gap Analysis Filter Pills */
+.iatf-gap-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.iatf-gap-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+}
+.iatf-gap-pill:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+.iatf-gap-pill.active-all {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.2);
+}
+.iatf-gap-pill.active-complete {
+  background: #059669;
+  color: #ffffff;
+  border-color: #059669;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+}
+.iatf-gap-pill.active-incomplete {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+}
+
+/* 4. Export Excel Button */
+.iatf-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  background: #059669;
+  color: #ffffff;
+  border: 1px solid #047857;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+  transition: all 0.2s ease;
+}
+.iatf-export-btn:hover {
+  background: #047857;
+  box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);
+}
+
+/* 5. Matrix Table & Sticky Architecture */
+.iatf-matrix-wrapper {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.iatf-matrix-table {
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.iatf-matrix-thead th {
+  background-color: #18345e !important;
+  color: #ffffff !important;
+  padding: 10px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 2px solid #0f2444;
+  white-space: nowrap;
+}
+.iatf-matrix-th-doc {
+  background-color: #24416b !important;
+  border-left: 1px solid #335384;
+  text-align: center;
+  min-width: 75px;
+  max-width: 90px;
+  padding: 8px 4px;
+}
+.iatf-th-sticky-1 {
+  position: sticky !important;
+  left: 0px !important;
+  z-index: 40 !important;
+  background-color: #18345e !important;
+  width: 44px;
+  min-width: 44px;
+  text-align: center;
+}
+.iatf-th-sticky-2 {
+  position: sticky !important;
+  left: 44px !important;
+  z-index: 40 !important;
+  background-color: #18345e !important;
+  width: 105px;
+  min-width: 105px;
+  text-align: left;
+}
+.iatf-th-sticky-3 {
+  position: sticky !important;
+  left: 149px !important;
+  z-index: 40 !important;
+  background-color: #18345e !important;
+  width: 170px;
+  min-width: 170px;
+  text-align: left;
+  border-right: 2px solid #0f2444;
+}
+
+/* Body Sticky Cells */
+.iatf-td-sticky-1 {
+  position: sticky !important;
+  left: 0px !important;
+  z-index: 20 !important;
+  background-color: #ffffff;
+  width: 44px;
+  text-align: center;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+}
+.iatf-td-sticky-2 {
+  position: sticky !important;
+  left: 44px !important;
+  z-index: 20 !important;
+  background-color: #ffffff;
+  width: 105px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  color: #1e293b;
+  border-bottom: 1px solid #f1f5f9;
+}
+.iatf-td-sticky-3 {
+  position: sticky !important;
+  left: 149px !important;
+  z-index: 20 !important;
+  background-color: #ffffff;
+  width: 170px;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  border-right: 2px solid #e2e8f0;
+  box-shadow: 2px 0 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.iatf-matrix-row:hover .iatf-td-sticky-1,
+.iatf-matrix-row:hover .iatf-td-sticky-2,
+.iatf-matrix-row:hover .iatf-td-sticky-3 {
+  background-color: #f0f7ff !important;
+}
+
+.iatf-matrix-row:hover td {
+  background-color: #f0f7ff;
+}
+
+/* Status Badges in Matrix */
+.iatf-badge-ada {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background-color: #d1fae5;
+  color: #065f46;
+  font-weight: 800;
+  font-size: 13px;
+  border: 1px solid #a7f3d0;
+}
+.iatf-badge-kosong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background-color: #f8fafc;
+  color: #cbd5e1;
+  font-weight: 700;
+  font-size: 13px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Enhanced Progress Bar Widget in Standard Table */
+.iatf-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+.iatf-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+}
+.iatf-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.iatf-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+.iatf-missing-badge {
+  display: inline-block;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  background-color: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+.iatf-complete-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  background-color: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+    
+/* ============================================================
+   IATF EXECUTIVE DASHBOARD & MATRIX REFINEMENT (v20261006)
+   ============================================================ */
+
+/* 1. Stat Cards: Perfectly Balanced 5-Column Grid */
+.iatf-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  margin-bottom: 24px !important;
+}
+@media (max-width: 1180px) {
+  .iatf-stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 680px) {
+  .iatf-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* 2. Filter Bar: Compact 4-Column Horizontal Layout */
+.iatf-filter-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 14px 18px !important;
+  margin-bottom: 18px !important;
+}
+@media (max-width: 1024px) {
+  .iatf-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 640px) {
+  .iatf-filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.iatf-filter-item {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 5px !important;
+}
+.iatf-filter-label {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #475569 !important;
+}
+.iatf-filter-select {
+  width: 100% !important;
+  height: 38px !important;
+  padding: 0 12px !important;
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #0f172a !important;
+  outline: none !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+}
+.iatf-filter-select:hover {
+  border-color: #94a3b8 !important;
+  background-color: #ffffff !important;
+}
+.iatf-filter-select:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+}
+
+/* 3. High-Contrast Table Headers */
+.iatf-table-thead th {
+  background-color: #18345E !important;
+  color: #FFFFFF !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  padding: 12px 16px !important;
+  border-bottom: 2px solid #0F223D !important;
+  white-space: nowrap !important;
+}
+
+
+/* --- IATF APQP GANTT CHART ENGINE --- */
+.iatf-gantt-card {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  overflow: hidden !important;
+  margin-top: 8px !important;
+}
+.iatf-gantt-topbar {
+  padding: 16px 20px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+.iatf-gantt-heading {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+.iatf-gantt-badge {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 3px 8px !important;
+  border-radius: 9999px !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe !important;
+}
+.iatf-gantt-legend {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 14px !important;
+  font-size: 11.5px !important;
+  color: #475569 !important;
+}
+.iatf-gantt-legend-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.iatf-gantt-dot {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+}
+.iatf-gantt-dot-green { background: #059669 !important; }
+.iatf-gantt-dot-amber { background: #d97706 !important; }
+.iatf-gantt-dot-gray { background: #94a3b8 !important; }
+
+.iatf-gantt-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  text-align: left !important;
+}
+.iatf-gantt-th {
+  background: #18345E !important;
+  color: #ffffff !important;
+  padding: 10px 14px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  border-right: 1px solid rgba(255,255,255,0.12) !important;
+}
+.iatf-gantt-th:last-child { border-right: none !important; }
+
+.iatf-gantt-phase-banner {
+  background: #f1f5f9 !important;
+  border-top: 1.5px solid #cbd5e1 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 8px 14px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+.iatf-gantt-row {
+  border-bottom: 1px solid #f1f5f9 !important;
+  transition: background 0.15s ease !important;
+}
+.iatf-gantt-row:hover {
+  background: #f8fafc !important;
+}
+.iatf-gantt-td {
+  padding: 10px 14px !important;
+  font-size: 12.5px !important;
+  color: #334155 !important;
+  vertical-align: middle !important;
+  border-right: 1px solid #f1f5f9 !important;
+}
+.iatf-gantt-td:last-child { border-right: none !important; }
+
+.iatf-gantt-bar-uploaded {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  color: #ffffff !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid #065F46 !important;
+}
+.iatf-gantt-bar-pending {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border: 1px solid #fde68a !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+.iatf-gantt-bar-empty {
+  background: #f8fafc !important;
+  color: #64748b !important;
+  border: 1px dashed #cbd5e1 !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+.iatf-gantt-btn {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  border: none !important;
+  transition: all 0.15s ease !important;
+}
+.iatf-gantt-btn-view {
+  background: #ffffff !important;
+  color: #047857 !important;
+  border: 1px solid #a7f3d0 !important;
+}
+.iatf-gantt-btn-view:hover { background: #f0fdf4 !important; }
+.iatf-gantt-btn-hist {
+  background: rgba(255,255,255,0.2) !important;
+  color: #ffffff !important;
+  margin-left: 4px !important;
+}
+.iatf-gantt-btn-hist:hover { background: rgba(255,255,255,0.3) !important; }
+.iatf-gantt-btn-upload {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+.iatf-gantt-btn-upload:hover { background: #1d4ed8 !important; }
+.iatf-gantt-btn-upload-subtle {
+  background: #e2e8f0 !important;
+  color: #334155 !important;
+}
+.iatf-gantt-btn-upload-subtle:hover { background: #cbd5e1 !important; }
+
+
+      /* --- IATF STANDARD PROJECTS TABLE (100% SCREEN FIT & ELLIPSIS ...) --- */
+      .iatf-standard-table {
+        table-layout: fixed !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+      }
+      .iatf-th-no { width: 3.5% !important; text-align: center !important; }
+      .iatf-th-icode { width: 9% !important; text-align: left !important; }
+      .iatf-th-item { width: 18% !important; text-align: left !important; }
+      .iatf-th-partno { width: 10% !important; text-align: left !important; }
+      .iatf-th-project { width: 14% !important; text-align: left !important; }
+      .iatf-th-customer { width: 12% !important; text-align: left !important; }
+      .iatf-th-status { width: 8.5% !important; text-align: center !important; }
+      .iatf-th-pic { width: 10% !important; text-align: left !important; }
+      .iatf-th-progress { width: 10% !important; text-align: left !important; }
+      .iatf-th-action { width: 5% !important; text-align: center !important; }
+
+      .iatf-table-thead th {
+        background-color: #18345E !important;
+        color: #FFFFFF !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.04em !important;
+        text-transform: uppercase !important;
+        padding: 9px 5px !important;
+        border-bottom: 2px solid #0F223D !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+
+      .iatf-standard-table tbody td {
+        padding: 7px 5px !important;
+        font-size: 12px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        vertical-align: middle !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+      }
+      .iatf-td-no {
+        text-align: center !important;
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 11px !important;
+      }
+      .iatf-td-icode {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+        font-size: 11px !important;
+      }
+      .iatf-td-item {
+        font-weight: 600 !important;
+        color: #1e293b !important;
+      }
+      .iatf-td-partno {
+        color: #475569 !important;
+      }
+      .iatf-td-project {
+        font-weight: 500 !important;
+        color: #1e3a8a !important;
+      }
+      .iatf-td-customer {
+        color: #475569 !important;
+      }
+      .iatf-td-status {
+        text-align: center !important;
+      }
+      .iatf-td-pic {
+        color: #334155 !important;
+      }
+      .iatf-td-progress {
+        padding: 5px 5px !important;
+      }
+      .iatf-td-action {
+        text-align: center !important;
+        padding: 5px 4px !important;
+      }
+
+      .iatf-progress-container {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+      .iatf-progress-header {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        font-size: 10px !important;
+        font-weight: 700 !important;
+      }
+      .iatf-progress-track {
+        width: 100% !important;
+        height: 5px !important;
+        background-color: #e2e8f0 !important;
+        border-radius: 9999px !important;
+        overflow: hidden !important;
+      }
+      .iatf-progress-fill {
+        height: 100% !important;
+        border-radius: 9999px !important;
+        transition: width 0.3s ease !important;
+      }
+      .iatf-missing-badge {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-size: 9px !important;
+        font-weight: 600 !important;
+        padding: 1px 4px !important;
+        border-radius: 3px !important;
+        background-color: #fef2f2 !important;
+        color: #dc2626 !important;
+        border: 1px solid #fecaca !important;
+        box-sizing: border-box !important;
+      }
+      .iatf-complete-badge {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-size: 9.5px !important;
+        font-weight: 700 !important;
+        padding: 1px 4px !important;
+        border-radius: 3px !important;
+        background-color: #ecfdf5 !important;
+        color: #059669 !important;
+        border: 1px solid #a7f3d0 !important;
+        text-align: center !important;
+        box-sizing: border-box !important;
+      }
+
+    </style>
+    <script>
+      /* --- 1. WINDOW OPEN USER ATTACHER --- */
+      (function() {
+        const originalOpen = window.open;
+        window.open = function(url, target, features) {
+          if (typeof url === 'string' && url.includes('/api/documents/')) {
+            try {
+              const userStr = localStorage.getItem('user');
+              if (userStr) {
+                const user = JSON.parse(userStr);
+                const userName = user.full_name || user.name || '';
+                const userRole = user.role || '';
+                if (userName) {
+                  const separator = url.includes('?') ? '&' : '?';
+                  const params = new URLSearchParams();
+                  params.append('user_name', userName);
+                  if (userRole) params.append('user_role', userRole);
+                  url = url + separator + params.toString();
+                }
+              }
+            } catch (e) {
+              console.error('Error attaching user to document URL:', e);
+            }
+          }
+          return originalOpen.call(window, url, target, features);
+        };
+      })();
+
+      /* --- 2. FLOATING TOAST SYSTEM --- */
+      (function() {
+        function getContainer() {
+          let c = document.getElementById('iatf-toast-container');
+          if (!c) {
+            c = document.createElement('div');
+            c.id = 'iatf-toast-container';
+            document.body.appendChild(c);
+          }
+          return c;
+        }
+
+        window.showToast = function(msg, explicitType) {
+          if (!msg) return;
+          const container = getContainer();
+          const strMsg = String(msg);
+          let type = explicitType || 'info';
+          let title = 'NOTIFIKASI SISTEM';
+
+          const lower = strMsg.toLowerCase();
+          if (explicitType === 'success' || (!explicitType && (lower.includes('berhasil') || lower.includes('success') || lower.includes('sukses') || lower.includes('complete') || lower.includes('uploaded')))) {
+            type = 'success';
+            title = 'BERHASIL';
+          } else if (explicitType === 'error' || (!explicitType && (lower.includes('gagal') || lower.includes('failed') || lower.includes('error') || lower.includes('invalid') || lower.includes('salah')))) {
+            type = 'error';
+            title = 'PERHATIAN / ERROR';
+          }
+
+          const toast = document.createElement('div');
+          toast.className = `iatf-toast iatf-toast-${type}`;
+
+          let iconSvg = '';
+          if (type === 'success') {
+            iconSvg = '<svg class="w-5 h-5 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>';
+          } else if (type === 'error') {
+            iconSvg = '<svg class="w-5 h-5 text-rose-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+          } else {
+            iconSvg = '<svg class="w-5 h-5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+          }
+
+          toast.innerHTML = `
+            <div class="iatf-toast-icon">${iconSvg}</div>
+            <div class="iatf-toast-content">
+              <div class="iatf-toast-title">${title}</div>
+              <div class="iatf-toast-msg">${strMsg}</div>
+            </div>
+            <button type="button" class="iatf-toast-close" title="Tutup">&times;</button>
+            <div class="iatf-toast-bar"></div>
+          `;
+
+          container.appendChild(toast);
+
+          let timer = setTimeout(() => {
+            closeToast();
+          }, 3500);
+
+          function closeToast() {
+            clearTimeout(timer);
+            toast.classList.add('closing');
+            setTimeout(() => {
+              if (toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 250);
+          }
+
+          toast.querySelector('.iatf-toast-close').onclick = closeToast;
+        };
+
+        // Globally override native alert
+        window.alert = function(msg) {
+          window.showToast(msg);
+        };
+      })();
+
+      /* --- 3. CUSTOM CONFIRMATION MODAL --- */
+      (function() {
+        window.customConfirm = function(options) {
+          return new Promise(function(resolve) {
+            let title = 'Konfirmasi Tindakan';
+            let message = '';
+            let confirmText = 'Hapus';
+            let cancelText = 'Batal';
+            let danger = true;
+
+            if (typeof options === 'string') {
+              message = options;
+            } else if (options && typeof options === 'object') {
+              title = options.title || title;
+              message = options.message || '';
+              confirmText = options.confirmText || confirmText;
+              cancelText = options.cancelText || cancelText;
+              danger = options.danger !== false;
+            }
+
+            const overlay = document.createElement('div');
+            overlay.id = 'iatf-confirm-overlay';
+
+            const iconSvg = danger ?
+              '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>' :
+              '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+
+            overlay.innerHTML = `
+              <div class="iatf-confirm-backdrop"></div>
+              <div class="iatf-confirm-box">
+                <div class="iatf-confirm-icon ${danger ? 'danger' : 'info'}">${iconSvg}</div>
+                <div class="iatf-confirm-body">
+                  <h3 class="iatf-confirm-title">${title}</h3>
+                  <p class="iatf-confirm-message">${message}</p>
+                  <div class="iatf-confirm-actions">
+                    <button type="button" class="iatf-btn-cancel">${cancelText}</button>
+                    <button type="button" class="iatf-btn-confirm ${danger ? 'btn-danger' : 'btn-primary'}">${confirmText}</button>
+                  </div>
+                </div>
+              </div>
+            `;
+            document.body.appendChild(overlay);
+
+            function cleanup(result) {
+              window.removeEventListener('keydown', onKey);
+              overlay.classList.add('closing');
+              setTimeout(() => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 200);
+              resolve(result);
+            }
+
+            function onKey(e) {
+              if (e.key === 'Escape') cleanup(false);
+              if (e.key === 'Enter') cleanup(true);
+            }
+            window.addEventListener('keydown', onKey);
+
+            overlay.querySelector('.iatf-btn-cancel').onclick = () => cleanup(false);
+            overlay.querySelector('.iatf-confirm-backdrop').onclick = () => cleanup(false);
+            overlay.querySelector('.iatf-btn-confirm').onclick = () => cleanup(true);
+          });
+        };
+      })();
+
+      /* --- 4. GLOBAL KEYBOARD SHORTCUTS --- */
+      (function() {
+        window.addEventListener('keydown', function(e) {
+          if ((e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+            e.preventDefault();
+            const searchInput = document.querySelector('input[placeholder*="Search"], input[placeholder*="Cari"], input[type="text"]');
+            if (searchInput) {
+              searchInput.focus();
+              searchInput.select();
+            }
+          }
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+            e.preventDefault();
+            const btn = document.getElementById('iatf-sidebar-toggle-btn');
+            if (btn) btn.click();
+          }
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-v2026.js?v=20261008_monitoring_sys_v3"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-v2026.css">
+    <link rel="stylesheet" crossorigin href="/assets/demo-tour.css?v=20261008_tour_v3">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="/assets/demo-tour.js?v=20261008_tour_v3"></script>
+  </body>
+</html>
